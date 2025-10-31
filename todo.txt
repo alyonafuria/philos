@@ -1,0 +1,13 @@
+TODO
+- do minimal run with print before mutexes
+- init mutexes
+- configure mutexes
+- clean memory leaks
+- tests
+- refactoring
+
+IN PROCESS
+- init data
+
+DONE
+- input validation

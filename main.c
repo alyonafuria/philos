@@ -32,15 +32,34 @@
 // pthread_mutex_unlock
 
 #include <pthread.h>
+#include <stdio.h>
+#include <limits.h>
+
+int    throw_err(int err);
+int phil_atoi(char *c);
+int ft_isdigit(char c);
+void clean(t_data data);
+void run_philos();
+void init_data(int argc, char *argv[], t_data *data);
+int is_valid_input(int argc, char *argv[]);
+
+typedef struct s_pstate
+{
+    int id;
+    int last_meal;
+    int meals_eaten;
+    pthread_t thread;
+    //int fork_indices;
+}   t_pstate;
 
 typedef struct s_data
 {
-    int philos;
-    int forks; //?
+    int philos; //do i need duplication?
+    int forks;
     int time_to_die;
     int time_to_eat;
     int time_to_sleep;
-    int number_of_times; //set or null;
+    int number_of_times;
     //TODO:
     //fork mutexes array
     //print mutex
@@ -48,9 +67,29 @@ typedef struct s_data
     //philo_state(id, last_meal, meals_eaten, thread, fork_indices)
 }   t_data;
 
+int    throw_err(int err)
+{
+    if (err == -1)
+        printf("only int in input pls\n");
+    return (-1);
+}
+
 int phil_atoi(char *c)
 {
-    //handle overflow by using long/uint64_t
+    long num;
+    int i;
+
+    i = 0;
+    num = 0;
+    while (c[i])
+    {
+        num *= 10;
+        num += c[i] - '0';
+        if (num > INT_MAX)
+            return(-1);
+        i++;
+    }
+    return ((int)num);
 }
 
 int ft_isdigit(char c)
@@ -80,10 +119,6 @@ void run_philos()
 
 void init_data(int argc, char *argv[], t_data *data)
 {
-    //TODO:
-    //philos >= 1
-    //times > 0
-    //optional meals > 0
     data->forks = phil_atoi(argv[1]);
     data->philos = data->forks;
     data->time_to_die = phil_atoi(argv[2]);
@@ -101,7 +136,7 @@ int is_valid_input(int argc, char *argv[])
     int j;
 
     if (argc < 5 || argc > 6)
-        return (0);
+        return (printf("wrong amount of args\n"), 0);
     i = 1;
     while (i < argc)
     {
@@ -109,9 +144,11 @@ int is_valid_input(int argc, char *argv[])
         while (argv[i][j])
         {
             if (!ft_isdigit(argv[i][j]))
-                return (0);
+                return (printf("args should be ints\n"), 0);
             j++;
         }
+        if (phil_atoi(argv[i]) < 1)
+            return (printf("args should be ints and > 0\n"), 0);
         i++;
     }
     return (1);
