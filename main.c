@@ -34,46 +34,43 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <limits.h>
+#include <sys/time.h>
 
-int    throw_err(int err);
+//**********************TYPES**********************************/
+typedef struct s_philstate
+{
+    int id;
+    long long last_meal_ms;
+    int meals_eaten;
+    pthread_t thread;
+    //int fork_indices;
+}   t_philstate;
+
+typedef struct s_data
+{
+    int forks;
+    int time_to_die;
+    int time_to_eat;
+    int time_to_sleep;
+    int number_of_times;
+    long long start_time;
+    //TODO:
+    //fork mutexes array
+    //print mutex
+    //philo_state(id, last_meal, meals_eaten, thread, fork_indices)
+}   t_data;
+
+//*********************FUNCTION DECLARATIONS*******************/
 int phil_atoi(char *c);
 int ft_isdigit(char c);
 void clean(t_data data);
 void run_philos();
 void init_data(int argc, char *argv[], t_data *data);
 int is_valid_input(int argc, char *argv[]);
+long long gettime_ms(void);
+long long   diff_time(t_data *data);
 
-typedef struct s_pstate
-{
-    int id;
-    int last_meal;
-    int meals_eaten;
-    pthread_t thread;
-    //int fork_indices;
-}   t_pstate;
-
-typedef struct s_data
-{
-    int philos; //do i need duplication?
-    int forks;
-    int time_to_die;
-    int time_to_eat;
-    int time_to_sleep;
-    int number_of_times;
-    //TODO:
-    //fork mutexes array
-    //print mutex
-    //start_time
-    //philo_state(id, last_meal, meals_eaten, thread, fork_indices)
-}   t_data;
-
-int    throw_err(int err)
-{
-    if (err == -1)
-        printf("only int in input pls\n");
-    return (-1);
-}
-
+//*************************************************************** */
 int phil_atoi(char *c)
 {
     long num;
@@ -117,10 +114,25 @@ void run_philos()
     // join/detach
 }
 
+long long gettime_ms(void)
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+    return ((long long)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
+long long   diff_time(t_data *data)
+{
+    long long   now;
+
+    now = gettime_ms();
+    return (now - data->start_time);
+}
+
 void init_data(int argc, char *argv[], t_data *data)
 {
     data->forks = phil_atoi(argv[1]);
-    data->philos = data->forks;
     data->time_to_die = phil_atoi(argv[2]);
     data->time_to_eat = phil_atoi(argv[3]);
     data->time_to_sleep = phil_atoi(argv[4]);
@@ -128,6 +140,7 @@ void init_data(int argc, char *argv[], t_data *data)
         data->number_of_times = phil_atoi(argv[5]);
     else
         data->number_of_times = -1;
+    data->start_time = gettime_ms();
 }
 
 int is_valid_input(int argc, char *argv[])
