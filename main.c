@@ -33,6 +33,7 @@
 
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <limits.h>
 #include <sys/time.h>
 
@@ -42,34 +43,36 @@ typedef struct s_philstate
     int id;
     long long last_meal_ms;
     int meals_eaten;
+    int left;
+    int right;
     pthread_t thread;
-    //int fork_indices;
 }   t_philstate;
 
 typedef struct s_data
 {
-    int forks;
+    int philos;
     int time_to_die;
     int time_to_eat;
     int time_to_sleep;
     int number_of_times;
     long long start_time;
-    //TODO:
-    //fork mutexes array
-    //print mutex
-    //philo_state(id, last_meal, meals_eaten, thread, fork_indices)
+    t_philstate *ph_states;
+    pthread_mutex_t *f_mutexes;
+    pthread_mutex_t print_mutex;
 }   t_data;
 
 //*********************FUNCTION DECLARATIONS*******************/
 int phil_atoi(char *c);
 int ft_isdigit(char c);
 void clean(t_data data);
-void run_philos();
+void run_philos(t_data *data);
 void init_data(int argc, char *argv[], t_data *data);
 int is_valid_input(int argc, char *argv[]);
-long long gettime_ms(void);
+long long   gettime_ms(void);
 long long   diff_time(t_data *data);
-
+void run_one_ph(t_data *data);
+void init_philstates(t_data *data);
+void *runthread(void *arg);
 //*************************************************************** */
 int phil_atoi(char *c)
 {
@@ -103,10 +106,48 @@ void clean(t_data data)
     //free(data);
     //destroy mutexes
 }
-
-void run_philos()
+void *runthread(void *arg)
 {
-    //special case for N = 1
+    t_philstate *philstate = (t_philstate *)arg;
+    //TODO: write routine
+    //check with monitor?
+    return (NULL);
+}
+
+void run_one_ph(t_data *data)
+{
+    //TODO
+}
+
+void init_mutexes_and_threads(t_data *data)
+{
+    int i;
+
+    i = 0;
+    while (i < data->philos)
+    {
+        pthread_mutex_init(&data->f_mutexes[i], NULL);
+        i++;
+    }
+    pthread_mutex_init(&data->print_mutex, NULL);
+    i = 0;
+    while (i < data->philos)
+    {
+        pthread_create(&data->ph_states[i].thread, NULL, runthread, &data->ph_states[i]);
+        i++;
+    }
+}
+
+void run_philos(t_data *data)
+{
+    data->start_time = gettime_ms();
+    init_philstates(data);
+    if (data->philos == 1)
+    {
+        run_one_ph(data);
+        return ;
+    }
+    init_mutexes_and_threads(data);
     //even go first
     // initialize mutexes/arrays, 
     // spawn threads, start_time, 
@@ -130,9 +171,25 @@ long long   diff_time(t_data *data)
     return (now - data->start_time);
 }
 
+void init_philstates(t_data *data)
+{
+    int i;
+
+    i = 0;
+    while (i < data->philos)
+    {
+        data->ph_states[i].id = i + 1;
+        data->ph_states[i].last_meal_ms = data->start_time;
+        data->ph_states[i].meals_eaten = 0;
+        data->ph_states[i].left = i;
+        data->ph_states[i].right = (i + 1) % data->philos;
+        i++;
+    }
+}
+
 void init_data(int argc, char *argv[], t_data *data)
 {
-    data->forks = phil_atoi(argv[1]);
+    data->philos = phil_atoi(argv[1]);
     data->time_to_die = phil_atoi(argv[2]);
     data->time_to_eat = phil_atoi(argv[3]);
     data->time_to_sleep = phil_atoi(argv[4]);
@@ -140,7 +197,8 @@ void init_data(int argc, char *argv[], t_data *data)
         data->number_of_times = phil_atoi(argv[5]);
     else
         data->number_of_times = -1;
-    data->start_time = gettime_ms();
+    data->ph_states = malloc(sizeof(t_philstate) * data->philos);
+    data->f_mutexes = malloc(sizeof(pthread_mutex_t) * data->philos);
 }
 
 int is_valid_input(int argc, char *argv[])
@@ -173,8 +231,7 @@ int main (int argc, char *argv[])
     if (!is_valid_input(argc, argv))
         return (1);
     init_data(argc, argv, &data);
-    while (1)
-        run_philos();
+    run_philos(&data);
     clean(data);
     return (0);
 }
