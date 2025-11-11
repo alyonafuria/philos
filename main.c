@@ -51,6 +51,7 @@ typedef struct s_philstate
 typedef struct s_data
 {
     int philos;
+    int stop;
     int time_to_die;
     int time_to_eat;
     int time_to_sleep;
@@ -59,15 +60,19 @@ typedef struct s_data
     t_philstate *ph_states;
     pthread_mutex_t *f_mutexes;
     pthread_mutex_t print_mutex;
+    pthread_mutex_t state_mut;
 }   t_data;
 
 //*********************FUNCTION DECLARATIONS*******************/
 int phil_atoi(char *c);
 int ft_isdigit(char c);
 void clean(t_data data);
+void init_mutexes(t_data *data);
+void init_threads(t_data *data);
 void run_philos(t_data *data);
 void init_data(int argc, char *argv[], t_data *data);
 int is_valid_input(int argc, char *argv[]);
+void safe_printf(t_philstate *ph, t_data *data, char c);
 long long   gettime_ms(void);
 long long   diff_time(t_data *data);
 void run_one_ph(t_data *data);
@@ -119,7 +124,7 @@ void run_one_ph(t_data *data)
     //TODO
 }
 
-void init_mutexes_and_threads(t_data *data)
+void init_mutexes(t_data *data)
 {
     int i;
 
@@ -130,6 +135,13 @@ void init_mutexes_and_threads(t_data *data)
         i++;
     }
     pthread_mutex_init(&data->print_mutex, NULL);
+    pthread_mutex_init(&data->state_mut, NULL);
+}
+
+void init_threads(t_data *data)
+{
+    int i;
+
     i = 0;
     while (i < data->philos)
     {
@@ -147,12 +159,29 @@ void run_philos(t_data *data)
         run_one_ph(data);
         return ;
     }
-    init_mutexes_and_threads(data);
+    init_mutexes(data);
+    init_threads(data);
     //even go first
     // initialize mutexes/arrays, 
     // spawn threads, start_time, 
     // launch monitor, 
     // join/detach
+}
+
+void safe_printf(t_philstate *ph, t_data *data, char c)
+{
+        pthread_mutex_lock(&data->print_mutex);
+        if (c == 'd')
+            printf("%lld %d died\n", diff_time(data), ph->id);
+        if (c == 'f')
+            printf("%lld %d has taken a fork\n", diff_time(data), ph->id);
+        if (c == 'e')
+            printf("%lld %d is eating\n", diff_time(data), ph->id);
+        if (c == 's')
+            printf("%lld %d is sleeping\n", diff_time(data), ph->id);
+        if (c == 't')
+            printf("%lld %d is thinking\n", diff_time(data), ph->id);
+        pthread_mutex_unlock(&data->print_mutex);
 }
 
 long long gettime_ms(void)
@@ -190,6 +219,7 @@ void init_philstates(t_data *data)
 void init_data(int argc, char *argv[], t_data *data)
 {
     data->philos = phil_atoi(argv[1]);
+    data->stop = 0;
     data->time_to_die = phil_atoi(argv[2]);
     data->time_to_eat = phil_atoi(argv[3]);
     data->time_to_sleep = phil_atoi(argv[4]);
