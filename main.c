@@ -184,6 +184,20 @@ void safe_printf(t_philstate *ph, t_data *data, char c)
         pthread_mutex_unlock(&data->print_mutex);
 }
 
+int smart_sleep(t_data *data, long long target_sleep)
+{
+    long long start_sleep;
+    int success;
+
+    start_sleep = gettime_ms();
+    success = 1;
+    while(gettime_ms() - start_sleep <= target_sleep && data->stop == 0)
+        usleep(500);
+    if (data->stop == 1)
+        success = 0;
+    return (success);
+}
+
 long long gettime_ms(void)
 {
     struct timeval tv;
