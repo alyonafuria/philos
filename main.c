@@ -36,8 +36,11 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 //**********************TYPES**********************************/
+typedef struct s_data t_data;
+
 typedef struct s_philstate
 {
     int id;
@@ -45,6 +48,7 @@ typedef struct s_philstate
     int meals_eaten;
     int left;
     int right;
+    t_data *data;
     pthread_t thread;
 }   t_philstate;
 
@@ -66,18 +70,24 @@ typedef struct s_data
 //*********************FUNCTION DECLARATIONS*******************/
 int phil_atoi(char *c);
 int ft_isdigit(char c);
-void clean(t_data data);
+// void clean(t_data data);
+void do_think(t_philstate *philstate, t_data *data);
+void take_forks(t_philstate *philstate, t_data *data);
+void release_forks(t_philstate *philstate, t_data *data);
+void do_eat(t_philstate *philstate, t_data *data);
+void *runthread(void *arg);
+// void run_one_ph(t_data *data);
 void init_mutexes(t_data *data);
 void init_threads(t_data *data);
 void run_philos(t_data *data);
-void init_data(int argc, char *argv[], t_data *data);
-int is_valid_input(int argc, char *argv[]);
 void safe_printf(t_philstate *ph, t_data *data, char c);
+int smart_sleep(t_data *data, long long target_sleep);
 long long   gettime_ms(void);
 long long   diff_time(t_data *data);
-void run_one_ph(t_data *data);
 void init_philstates(t_data *data);
-void *runthread(void *arg);
+void init_data(int argc, char *argv[], t_data *data);
+int is_valid_input(int argc, char *argv[]);
+int main (int argc, char *argv[]);
 //*************************************************************** */
 int phil_atoi(char *c)
 {
@@ -104,25 +114,86 @@ int ft_isdigit(char c)
     return (1);
 }
 
-void clean(t_data data)
+// void clean(t_data data)
+// {
+//     //TODO: 
+//     //join/detach
+//     //free(data);
+//     //destroy mutexes
+// }
+
+void do_think(t_philstate *philstate, t_data *data)
 {
-    //TODO: 
-    //join/detach
-    //free(data);
-    //destroy mutexes
+    safe_printf(philstate, data, 't');
+    if (philstate->id % 2 == 0)
+        smart_sleep(data, 50);
+    else
+        smart_sleep(data, 40);
 }
+
+void take_forks(t_philstate *philstate, t_data *data)
+{
+    if (philstate->id % 2 == 0)
+    {
+        pthread_mutex_lock(&data->f_mutexes[philstate->right]);
+        safe_printf(philstate, data, 'f');
+        pthread_mutex_lock(&data->f_mutexes[philstate->left]);
+        safe_printf(philstate, data, 'f');
+    }
+    else
+    {
+        pthread_mutex_lock(&data->f_mutexes[philstate->left]);
+        safe_printf(philstate, data, 'f');
+        pthread_mutex_lock(&data->f_mutexes[philstate->right]);
+        safe_printf(philstate, data, 'f');
+    }
+}
+
+void release_forks(t_philstate *philstate, t_data *data)
+{
+     if (philstate->id % 2 == 0)
+    {
+        pthread_mutex_unlock(&data->f_mutexes[philstate->left]);
+        pthread_mutex_unlock(&data->f_mutexes[philstate->right]);
+    }
+    else
+    {
+        pthread_mutex_unlock(&data->f_mutexes[philstate->right]);
+        pthread_mutex_unlock(&data->f_mutexes[philstate->left]);
+    }
+}
+
+void do_eat(t_philstate *philstate, t_data *data)
+{
+    pthread_mutex_lock(&data->state_mut);
+    if (philstate->meals_eaten >= 0)
+        philstate->meals_eaten++;
+    philstate->last_meal_ms = gettime_ms();
+    pthread_mutex_unlock(&data->state_mut);
+    safe_printf(philstate, philstate->data, 'e');
+    smart_sleep(data, data->time_to_eat);
+}
+
 void *runthread(void *arg)
 {
     t_philstate *philstate = (t_philstate *)arg;
-    //TODO: write routine
-    //check with monitor?
+    t_data *data = philstate->data;
+    while (1)
+    {
+        do_think(philstate, data);
+        take_forks(philstate, data);
+        do_eat(philstate, data);
+        release_forks(philstate, data);
+        safe_printf(philstate, data, 's');
+        smart_sleep(data, data->time_to_sleep);
+    }
     return (NULL);
 }
 
-void run_one_ph(t_data *data)
-{
-    //TODO
-}
+// void run_one_ph(t_data *data)
+// {
+//     //TODO
+// }
 
 void init_mutexes(t_data *data)
 {
@@ -146,6 +217,7 @@ void init_threads(t_data *data)
     while (i < data->philos)
     {
         pthread_create(&data->ph_states[i].thread, NULL, runthread, &data->ph_states[i]);
+        pthread_detach(data->ph_states[i].thread);
         i++;
     }
 }
@@ -156,32 +228,27 @@ void run_philos(t_data *data)
     init_philstates(data);
     if (data->philos == 1)
     {
-        run_one_ph(data);
+        //run_one_ph(data);
         return ;
     }
     init_mutexes(data);
     init_threads(data);
-    //even go first
-    // initialize mutexes/arrays, 
-    // spawn threads, start_time, 
-    // launch monitor, 
-    // join/detach
 }
 
 void safe_printf(t_philstate *ph, t_data *data, char c)
 {
-        pthread_mutex_lock(&data->print_mutex);
-        if (c == 'd')
-            printf("%lld %d died\n", diff_time(data), ph->id);
-        if (c == 'f')
-            printf("%lld %d has taken a fork\n", diff_time(data), ph->id);
-        if (c == 'e')
-            printf("%lld %d is eating\n", diff_time(data), ph->id);
-        if (c == 's')
-            printf("%lld %d is sleeping\n", diff_time(data), ph->id);
-        if (c == 't')
-            printf("%lld %d is thinking\n", diff_time(data), ph->id);
-        pthread_mutex_unlock(&data->print_mutex);
+    pthread_mutex_lock(&data->print_mutex);
+    if (c == 'd')
+        printf("%lld %d died\n", diff_time(data), ph->id);
+    if (c == 'f')
+        printf("%lld %d has taken a fork\n", diff_time(data), ph->id);
+    if (c == 'e')
+        printf("%lld %d is eating\n", diff_time(data), ph->id);
+    if (c == 's')
+        printf("%lld %d is sleeping\n", diff_time(data), ph->id);
+    if (c == 't')
+        printf("%lld %d is thinking\n", diff_time(data), ph->id);
+    pthread_mutex_unlock(&data->print_mutex);
 }
 
 int smart_sleep(t_data *data, long long target_sleep)
@@ -191,7 +258,7 @@ int smart_sleep(t_data *data, long long target_sleep)
 
     start_sleep = gettime_ms();
     success = 1;
-    while(gettime_ms() - start_sleep <= target_sleep && data->stop == 0)
+    while(gettime_ms() - start_sleep < target_sleep && data->stop == 0)
         usleep(500);
     if (data->stop == 1)
         success = 0;
@@ -226,6 +293,7 @@ void init_philstates(t_data *data)
         data->ph_states[i].meals_eaten = 0;
         data->ph_states[i].left = i;
         data->ph_states[i].right = (i + 1) % data->philos;
+        data->ph_states[i].data = data;
         i++;
     }
 }
@@ -276,6 +344,8 @@ int main (int argc, char *argv[])
         return (1);
     init_data(argc, argv, &data);
     run_philos(&data);
-    clean(data);
+    //for testing
+    usleep(100000000);
+    //clean(data);
     return (0);
 }
