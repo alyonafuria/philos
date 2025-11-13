@@ -62,6 +62,7 @@ typedef struct s_data
     int number_of_times;
     long long start_time;
     t_philstate *ph_states;
+    pthread_t monitor;
     pthread_mutex_t *f_mutexes;
     pthread_mutex_t print_mutex;
     pthread_mutex_t state_mut;
@@ -70,12 +71,15 @@ typedef struct s_data
 //*********************FUNCTION DECLARATIONS*******************/
 int phil_atoi(char *c);
 int ft_isdigit(char c);
-// void clean(t_data data);
+// void cleanup(t_data data);
 void do_think(t_philstate *philstate, t_data *data);
 void take_forks(t_philstate *philstate, t_data *data);
 void release_forks(t_philstate *philstate, t_data *data);
 void do_eat(t_philstate *philstate, t_data *data);
+int is_stop(t_data *data);
 void *runthread(void *arg);
+int hasdied(t_philstate *phil);
+void *runmonitor(void *arg);
 // void run_one_ph(t_data *data);
 void init_mutexes(t_data *data);
 void init_threads(t_data *data);
@@ -174,18 +178,82 @@ void do_eat(t_philstate *philstate, t_data *data)
     smart_sleep(data, data->time_to_eat);
 }
 
+int is_stop(t_data *data)
+{
+    int value;
+
+    pthread_mutex_lock(&data->state_mut);
+    value = data->stop;
+    pthread_mutex_unlock(&data->state_mut);
+    return (value);
+}
+
 void *runthread(void *arg)
 {
-    t_philstate *philstate = (t_philstate *)arg;
-    t_data *data = philstate->data;
-    while (1)
+    t_philstate *philstate;
+    t_data *data;
+
+    philstate = (t_philstate *)arg;
+    data = philstate->data;
+    while (!is_stop(data))
     {
         do_think(philstate, data);
+        if (is_stop(data))
+            return (NULL);
         take_forks(philstate, data);
+        if (is_stop(data))
+            return (NULL);
         do_eat(philstate, data);
+        if (is_stop(data))
+            return (NULL);
         release_forks(philstate, data);
+        if (is_stop(data))
+            return (NULL);
         safe_printf(philstate, data, 's');
         smart_sleep(data, data->time_to_sleep);
+    }
+    return (NULL);
+}
+
+int hasdied(t_philstate *phil)
+{
+    long long last_meal_cpy;
+    int death;
+
+    death = 0;
+    pthread_mutex_lock(&phil->data->state_mut);
+    last_meal_cpy = phil->last_meal_ms;
+    if (gettime_ms() - last_meal_cpy > phil->data->time_to_die)
+        death = 1;
+    pthread_mutex_unlock(&phil->data->state_mut);
+    return (death);
+}
+
+void *runmonitor(void *arg)
+{
+    t_data *data;
+    t_philstate *philos;
+    int i;
+
+    data = (t_data *)arg;
+    philos = data->ph_states;
+    while (!is_stop(data))
+    {
+        i = 0;
+        while (i < data->philos)
+        {
+            // || allfed(&philos[i])
+            if (hasdied(&philos[i]))
+            {
+                pthread_mutex_lock(&data->state_mut);
+                data->stop = 1;
+                pthread_mutex_unlock(&data->state_mut);
+                safe_printf(&philos[i], data, 'd');
+                return (NULL);
+            }
+            i++; 
+        }
+        smart_sleep(data, 50);
     }
     return (NULL);
 }
@@ -220,6 +288,8 @@ void init_threads(t_data *data)
         pthread_detach(data->ph_states[i].thread);
         i++;
     }
+    pthread_create(&data->monitor, NULL, runmonitor, data);
+    //pthread_detach(data->monitor);
 }
 
 void run_philos(t_data *data)
@@ -260,7 +330,7 @@ int smart_sleep(t_data *data, long long target_sleep)
     success = 1;
     while(gettime_ms() - start_sleep < target_sleep && data->stop == 0)
         usleep(500);
-    if (data->stop == 1)
+    if (is_stop(data))
         success = 0;
     return (success);
 }
@@ -340,12 +410,14 @@ int is_valid_input(int argc, char *argv[])
 int main (int argc, char *argv[])
 {
     t_data data;
+
     if (!is_valid_input(argc, argv))
         return (1);
     init_data(argc, argv, &data);
     run_philos(&data);
-    //for testing
-    usleep(100000000);
-    //clean(data);
+    if (data.philos == 1)
+        return (0);
+    pthread_join(data.monitor, NULL);
+    //cleanup(data);
     return (0);
 }
