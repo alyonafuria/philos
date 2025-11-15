@@ -73,14 +73,16 @@ int phil_atoi(char *c);
 int ft_isdigit(char c);
 // void cleanup(t_data data);
 void do_think(t_philstate *philstate, t_data *data);
-void take_forks(t_philstate *philstate, t_data *data);
-void release_forks(t_philstate *philstate, t_data *data);
+void take_fork(t_philstate *philstate, t_data *data);
+void release_fork(t_philstate *philstate, t_data *data);
 void do_eat(t_philstate *philstate, t_data *data);
 int is_stop(t_data *data);
-void *runthread(void *arg);
-int hasdied(t_philstate *phil);
-void *runmonitor(void *arg);
-// void run_one_ph(t_data *data);
+void *run_thread(void *arg);
+int has_died(t_philstate *phil);
+int  all_fed(t_data *data, t_philstate *philstate);
+int is_anyone_ded(t_data *data, t_philstate *philos);
+void *run_monitor(void *arg);
+void run_one_ph(t_data *data);
 void init_mutexes(t_data *data);
 void init_threads(t_data *data);
 void run_philos(t_data *data);
@@ -135,7 +137,7 @@ void do_think(t_philstate *philstate, t_data *data)
         smart_sleep(data, 40);
 }
 
-void take_forks(t_philstate *philstate, t_data *data)
+void take_fork(t_philstate *philstate, t_data *data)
 {
     if (philstate->id % 2 == 0)
     {
@@ -153,7 +155,7 @@ void take_forks(t_philstate *philstate, t_data *data)
     }
 }
 
-void release_forks(t_philstate *philstate, t_data *data)
+void release_fork(t_philstate *philstate, t_data *data)
 {
      if (philstate->id % 2 == 0)
     {
@@ -188,7 +190,7 @@ int is_stop(t_data *data)
     return (value);
 }
 
-void *runthread(void *arg)
+void *run_thread(void *arg)
 {
     t_philstate *philstate;
     t_data *data;
@@ -200,13 +202,13 @@ void *runthread(void *arg)
         do_think(philstate, data);
         if (is_stop(data))
             return (NULL);
-        take_forks(philstate, data);
+        take_fork(philstate, data);
         if (is_stop(data))
             return (NULL);
         do_eat(philstate, data);
         if (is_stop(data))
             return (NULL);
-        release_forks(philstate, data);
+        release_fork(philstate, data);
         if (is_stop(data))
             return (NULL);
         safe_printf(philstate, data, 's');
@@ -215,7 +217,7 @@ void *runthread(void *arg)
     return (NULL);
 }
 
-int hasdied(t_philstate *phil)
+int has_died(t_philstate *phil)
 {
     long long last_meal_cpy;
     int death;
@@ -229,7 +231,52 @@ int hasdied(t_philstate *phil)
     return (death);
 }
 
-void *runmonitor(void *arg)
+int  all_fed(t_data *data, t_philstate *philstate)
+{
+    int i;
+    int cpy_meals_eaten;
+    int cpy_number_of_times;
+
+    pthread_mutex_lock(&data->state_mut);
+    cpy_number_of_times = data->number_of_times;
+    pthread_mutex_unlock(&data->state_mut);
+    if (cpy_number_of_times == -1)
+        return (0);
+    i = 0;
+    while (i < data->philos)
+    {
+        pthread_mutex_lock(&data->state_mut);
+        cpy_meals_eaten = philstate[i].meals_eaten;
+        pthread_mutex_unlock(&data->state_mut);
+        if (cpy_meals_eaten >= cpy_number_of_times)
+            i++;
+        else
+            return (0);
+    }
+    return (1);
+}
+
+int is_anyone_ded(t_data *data, t_philstate *philos)
+{
+    int i;
+
+    i = 0;
+    while (i < data->philos)
+    {
+        if (has_died(&philos[i]))
+        {
+            pthread_mutex_lock(&data->state_mut);
+            data->stop = 1;
+            pthread_mutex_unlock(&data->state_mut);
+            safe_printf(&philos[i], data, 'd');
+            return (1);
+        }
+        i++; 
+    }
+    return (0);
+}
+
+void *run_monitor(void *arg)
 {
     t_data *data;
     t_philstate *philos;
@@ -239,30 +286,29 @@ void *runmonitor(void *arg)
     philos = data->ph_states;
     while (!is_stop(data))
     {
-        i = 0;
-        while (i < data->philos)
-        {
-            // || allfed(&philos[i])
-            if (hasdied(&philos[i]))
-            {
-                pthread_mutex_lock(&data->state_mut);
-                data->stop = 1;
-                pthread_mutex_unlock(&data->state_mut);
-                safe_printf(&philos[i], data, 'd');
+        if (is_anyone_ded(data, philos))
                 return (NULL);
-            }
-            i++; 
+        if (allfed(data, philos))
+        {
+            pthread_mutex_lock(&data->state_mut);
+            data->stop = 1;
+            pthread_mutex_unlock(&data->state_mut);
+            return (NULL);
         }
         smart_sleep(data, 50);
     }
     return (NULL);
 }
 
-// void run_one_ph(t_data *data)
-// {
-//     //TODO
-// }
-
+void run_one_ph(t_data *data)
+{
+    safe_printf(&data->ph_states[0], data, 'f');
+    smart_sleep(data, data->time_to_die);
+    pthread_mutex_lock(&data->state_mut);
+    data->stop = 1;
+    pthread_mutex_unlock(&data->state_mut);
+    safe_printf(&data->ph_states[0], data, 'd');
+}
 void init_mutexes(t_data *data)
 {
     int i;
@@ -284,24 +330,23 @@ void init_threads(t_data *data)
     i = 0;
     while (i < data->philos)
     {
-        pthread_create(&data->ph_states[i].thread, NULL, runthread, &data->ph_states[i]);
+        pthread_create(&data->ph_states[i].thread, NULL, run_thread, &data->ph_states[i]);
         pthread_detach(data->ph_states[i].thread);
         i++;
     }
-    pthread_create(&data->monitor, NULL, runmonitor, data);
-    //pthread_detach(data->monitor);
+    pthread_create(&data->monitor, NULL, run_monitor, data);
 }
 
 void run_philos(t_data *data)
 {
     data->start_time = gettime_ms();
     init_philstates(data);
+    init_mutexes(data);
     if (data->philos == 1)
     {
-        //run_one_ph(data);
+        run_one_ph(data);
         return ;
     }
-    init_mutexes(data);
     init_threads(data);
 }
 
@@ -328,7 +373,7 @@ int smart_sleep(t_data *data, long long target_sleep)
 
     start_sleep = gettime_ms();
     success = 1;
-    while(gettime_ms() - start_sleep < target_sleep && data->stop == 0)
+    while(gettime_ms() - start_sleep < target_sleep && !is_stop(data))
         usleep(500);
     if (is_stop(data))
         success = 0;
